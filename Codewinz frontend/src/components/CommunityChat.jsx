@@ -96,7 +96,7 @@ function PremiumCommunityChat() {
   };
 
   useEffect(() => {
-    const newSocket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000', {
+    const newSocket = io(import.meta.env.SOCKET_SERVER_URL || 'http://localhost:3000', {
       withCredentials: true, 
       transports: ['websocket', 'polling']
     });
