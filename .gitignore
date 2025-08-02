@@ -2,8 +2,7 @@
 **/node_modules/
 
 # Ignore environment variables
-**/.env
-**/.env.*
+
 
 # Logs
 *.log
@@ -22,8 +21,7 @@ Thumbs.db
 .idea/
 
 # Vite specific
-**/dist/
-**/.vite/
+
 **/.cache/
 
 # React specific
