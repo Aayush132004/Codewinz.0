@@ -252,8 +252,10 @@ function CollaborativeEditor() {
                 // const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
                 // console.log('Connecting to socket with user:', currentUser);
                 
-                const newSocket = io(`${import.meta.env.SOCKET_SERVER_URL}/code`, {
+                const newSocket = io(import.meta.env.SOCKET_SERVER_URL, {
                     withCredentials: true,
+                    path:"/socket.io",
+                    transports:["websocket","polling"],
                     query: { 
                         sessionId,
                         userId: currentUser.id,

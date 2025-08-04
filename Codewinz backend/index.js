@@ -43,11 +43,11 @@ app.use(cookieParser());
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: process.env.FRONTEND_URL,
+        origin: [process.env.SOCKET_SERVER_URL],
         credentials: true,
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept"]
-    }
+    },
 });
 
 // A separate instance of cookie-parser for Socket.IO's internal use.
