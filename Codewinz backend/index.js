@@ -64,7 +64,7 @@ app.use("/contest", contestRouter);
 app.use("/code", codeCollaborationRouter);
 
 
-// --- Main Community Chat Logic (Root Namespace) - Using Working Logic from Old Code ---
+// --- Main Community Chat Logic (Root Namespace) ---
 const onlineUsersMap = new Map(); // Map<userId, { userDetails, Set<socketId> }>
 
 const emitOnlineUsers = () => {
@@ -90,7 +90,7 @@ io.on('connection', async (socket) => {
     onlineUsersMap.get(userId).socketIds.add(socket.id);
     emitOnlineUsers();
 
-    // Initial message load - using the working function name
+    // Initial message load
     try {
         const initialMessages = await fetchChatMessages({ limit: 50 });
         socket.emit('load messages', initialMessages);
@@ -143,7 +143,7 @@ io.on('connection', async (socket) => {
 });
 
 
-// --- Collaborative Coding Namespace (`/code`) - Using Improved Logic from New Code ---
+// --- Collaborative Coding Namespace (`/code`) ---
 const codeIo = io.of('/code');
 
 // Map to track active users in each code session room
@@ -163,16 +163,13 @@ codeIo.use(async (socket, next) => {
         }
         socket.codeSession = session;
 
-        const frontendUserId = socket.handshake.query.userId || socket.handshake.auth?.userId;
-        const frontendFirstName = socket.handshake.query.firstName || socket.handshake.auth?.firstName;
-        const frontendImageUrl = socket.handshake.query.imageUrl || socket.handshake.auth?.imageUrl;
-
+        // Apply cookie-parser here to populate `socket.request.cookies` before using them
         cookieParserInstance(socket.request, {}, async (err) => {
             if (err) {
                 console.warn("Code Collab: Cookie parsing error:", err.message);
             }
 
-            const token = socket.request.cookies.jwtToken;
+            const token = socket.request.cookies?.jwtToken; // Use optional chaining for safety
             let authenticatedUser = null;
 
             if (token) {
@@ -195,25 +192,21 @@ codeIo.use(async (socket, next) => {
 
             if (authenticatedUser) {
                 socket.user = authenticatedUser;
-            } else if (frontendUserId && frontendFirstName) {
+            } else if (socket.handshake.auth?.userId && socket.handshake.auth?.firstName) {
+                // This branch handles anonymous users from the frontend's `auth` object.
                 socket.user = {
-                    id: frontendUserId,
-                    firstName: frontendFirstName,
-                    imageUrl: frontendImageUrl || null,
+                    id: socket.handshake.auth.userId,
+                    firstName: socket.handshake.auth.firstName,
+                    imageUrl: socket.handshake.auth.imageUrl || null,
                     isAuthenticated: false
                 };
                 console.log(`Code Collab: Anonymous user ${socket.user.firstName} (${socket.user.id}) joined session ${sessionId}`);
             } else {
-                socket.user = {
-                    id: socket.id,
-                    firstName: 'Anonymous',
-                    imageUrl: null,
-                    isAuthenticated: false
-                };
-                console.log(`Code Collab: Fallback anonymous user joined session ${sessionId}`);
+                // Reject connections that are neither authenticated nor provide anonymous details.
+                return next(new Error("Collaboration error: User details missing."));
             }
 
-            next();
+            next(); // Crucial: Call `next()` to proceed to the connection handler.
         });
     } catch (error) {
         console.error("Code Collab: Error during session validation:", error.message);
@@ -295,11 +288,19 @@ codeIo.on('connection', async (socket) => {
 
     addUserToSession(sessionId, userDetails.id, userDetails, socket.id);
 
+    // --- FIX 1: Emit initial state to the new socket only ---
+    // A new user needs the code, language, and collaborator list as soon as they join.
+    socket.emit('code-change', socket.codeSession.codeContent); 
+    socket.emit('language-change', {
+        language: socket.codeSession.language,
+        codeContent: socket.codeSession.codeContent
+    });
+    
+    // --- FIX 2: Emit the updated collaborator list to all clients in the room ---
     emitSessionUsersUpdate(sessionId);
 
     socket.on('user-joined', (userData) => {
         console.log(`Code Collab: Received user-joined event:`, userData);
-
         if (userData && userData.userId) {
             const updatedUserDetails = {
                 id: userData.userId,
@@ -307,11 +308,9 @@ codeIo.on('connection', async (socket) => {
                 imageUrl: userData.imageUrl || userDetails.imageUrl,
                 isAuthenticated: userDetails.isAuthenticated
             };
-
             removeUserFromSession(sessionId, userDetails.id, socket.id);
             socket.user = updatedUserDetails;
             addUserToSession(sessionId, updatedUserDetails.id, updatedUserDetails, socket.id);
-
             emitSessionUsersUpdate(sessionId);
         }
     });
@@ -342,28 +341,22 @@ codeIo.on('connection', async (socket) => {
             if (!session) {
                 return socket.emit('code-error', 'Session not found.');
             }
-
             let targetLanguage = languageData.language;
             if (targetLanguage === "cpp") {
                 targetLanguage = "c++";
             }
-
             console.log("Language change request:", languageData, "-> Target:", targetLanguage);
-
             const boilerplateEntry = session.startCode.find(entry => entry.language === targetLanguage);
             const updatedCodeContent = languageData.codeContent || (boilerplateEntry ? boilerplateEntry.initialCode : session.codeContent);
-
             await CodeSession.updateOne({ sessionId }, {
                 language: targetLanguage,
                 codeContent: updatedCodeContent,
                 lastModified: new Date()
             });
-
             codeIo.to(sessionId).emit('language-change', {
                 language: targetLanguage,
                 codeContent: updatedCodeContent
             });
-
         } catch (error) {
             console.error(`Error updating language for session ${sessionId}:`, error);
             socket.emit('code-error', 'Failed to update language.');
@@ -395,13 +388,9 @@ codeIo.on('connection', async (socket) => {
     socket.on('disconnect', () => {
         const { sessionId } = socket.codeSession;
         const { id: userId, firstName } = userDetails;
-
         console.log(`${firstName} (${userId}) disconnected from code session: ${sessionId} (socket: ${socket.id})`);
-
         removeUserFromSession(sessionId, userId, socket.id);
-
         emitSessionUsersUpdate(sessionId);
-
         if (!codeSessionUsers.has(sessionId)) {
             console.log(`Code session ${sessionId} is now empty.`);
         }
