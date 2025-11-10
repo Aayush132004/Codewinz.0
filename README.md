@@ -85,7 +85,7 @@ It enables learners and developers to code, collaborate, and compete in real tim
 | **Authentication** | JWT, Redis, NodeMailer, Google One Tap SDK |
 | **Real-time Communication** | Socket.IO |
 | **Media/CDN** | Cloudinary |
-| **Deployment** | Railway |
+| **Deployment** |   AWS (EC2) using Ngnix for reverse proxy |
 
 ---
 
